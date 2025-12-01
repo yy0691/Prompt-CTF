@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Level, ModelType, RunResult, Language, Submission } from '../types';
-import { generateResponse, judgeSubmission } from '../services/geminiService';
+import { generateResponse, judgeSubmission, getConfig } from '../services/geminiService';
 import { saveSubmission, getHistory } from '../services/supabaseService';
 import TerminalOutput from './TerminalOutput';
 import HistoryPanel from './HistoryPanel';
-import { Play, RotateCcw, Cpu, Flag, AlertTriangle, Sparkles, History as HistoryIcon, ChevronUp, ChevronDown, Zap, ShieldCheck } from 'lucide-react';
+import { Play, RotateCcw, Cpu, Flag, AlertTriangle, Sparkles, History as HistoryIcon, ChevronUp, ChevronDown, Zap, ShieldCheck, Server, Globe } from 'lucide-react';
 import Confetti from './Confetti';
 import { getTranslation } from '../lib/translations';
 
@@ -26,6 +26,7 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [history, setHistory] = useState<Submission[]>([]);
     const [isMissionExpanded, setIsMissionExpanded] = useState(true);
+    const [isCustomMode, setIsCustomMode] = useState(false);
     
     const confettiTimeoutRef = useRef<number | null>(null);
     const t = getTranslation(lang);
@@ -41,6 +42,10 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
         
         // Load history for this level
         loadHistory();
+        
+        // Check config
+        const config = getConfig();
+        setIsCustomMode(config.isCustom);
     }, [level]);
 
     const loadHistory = async () => {
@@ -184,7 +189,18 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
             <div className="h-14 bg-zinc-900 border-b border-border flex items-center justify-between px-4 shrink-0 shadow-md z-20">
                 <div className="flex items-center gap-3">
                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-500 font-mono hidden md:inline">MODEL:</span>
+                        {isCustomMode ? (
+                            <div className="flex items-center gap-1 px-2 py-1 bg-blue-900/30 border border-blue-800 rounded text-[10px] text-blue-300 font-mono" title="Using Custom Proxy URL">
+                                <Server size={12} />
+                                <span>CUSTOM PROXY</span>
+                            </div>
+                        ) : (
+                             <div className="flex items-center gap-1 px-2 py-1 bg-zinc-800/50 border border-zinc-700 rounded text-[10px] text-zinc-500 font-mono" title="Using Google Official API">
+                                <Globe size={12} />
+                                <span>GOOGLE API</span>
+                            </div>
+                        )}
+                        <span className="text-xs text-zinc-500 font-mono hidden md:inline ml-2">MODEL:</span>
                         <select 
                             value={model}
                             onChange={(e) => setModel(e.target.value as ModelType)}

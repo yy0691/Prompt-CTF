@@ -6,35 +6,68 @@ import { Level, RunResult, Language } from "../types";
 // (e.g. Vercel Serverless Functions) to keep the API_KEY secret.
 // Since this is a client-side demo, the Key is embedded in the JS bundle at BUILD time.
 
-interface ApiConfig {
+export interface ApiConfig {
     apiKey: string;
     baseUrl?: string;
     customModel?: string;
+    isCustom: boolean;
 }
 
-const getConfig = (): ApiConfig => {
+// Helper to check multiple env var permutations
+const getEnvVar = (key: string): string | undefined => {
+    // Check standard, NEXT_PUBLIC_, VITE_, and REACT_APP_ prefixes
+    // Parcel typically inlines process.env.KEY, so we must access them explicitly or hope the bundler maps them.
+    // NOTE: Direct access is required for most bundlers (Vite/Parcel) to statically analyze and replace.
+    
+    // We try direct access first (most common)
+    if (process.env[key]) return process.env[key];
+    if (process.env[`NEXT_PUBLIC_${key}`]) return process.env[`NEXT_PUBLIC_${key}`];
+    if (process.env[`VITE_${key}`]) return process.env[`VITE_${key}`];
+    if (process.env[`REACT_APP_${key}`]) return process.env[`REACT_APP_${key}`];
+    
+    return undefined;
+}
+
+export const getConfig = (): ApiConfig => {
     try {
-        // Prioritize X_API_... variables if set (User custom proxy settings)
-        // We access process.env directly to ensure bundlers (Parcel/Vite) pick them up during build.
-        const xKey = process.env.X_API_KEY;
-        const stdKey = process.env.API_KEY;
+        // Prioritize Custom Keys
+        const xKey = getEnvVar('X_API_KEY');
+        const stdKey = getEnvVar('API_KEY');
         
-        // Support both X_API_URL (documented) and X_BASE_URL (common user preference)
-        // Sanitization: Remove trailing slash to prevent double slashes in SDK constructed paths
-        let xUrl = process.env.X_API_URL || process.env.X_BASE_URL;
+        // Support both X_API_URL and X_BASE_URL
+        let xUrl = getEnvVar('X_API_URL') || getEnvVar('X_BASE_URL');
+        
+        // Sanitization: Remove trailing slash
         if (xUrl && xUrl.endsWith('/')) {
             xUrl = xUrl.slice(0, -1);
         }
 
-        const xModel = process.env.X_API_MODEL;
+        const xModel = getEnvVar('X_API_MODEL');
 
-        return {
+        const config = {
             apiKey: xKey || stdKey || '',
             baseUrl: xUrl || undefined, 
-            customModel: xModel || undefined
+            customModel: xModel || undefined,
+            isCustom: !!xUrl
         };
+
+        // Debug Log (Visible in Browser Console)
+        if (typeof window !== 'undefined') {
+             // Only log once to avoid spam
+             if (!(window as any).__GEMINI_CONFIG_LOGGED__) {
+                 console.log(`[GeminiService] Config Loaded:`, {
+                     hasKey: !!config.apiKey,
+                     baseUrl: config.baseUrl || 'DEFAULT (Google)',
+                     model: config.customModel || 'DEFAULT',
+                     isCustom: config.isCustom
+                 });
+                 (window as any).__GEMINI_CONFIG_LOGGED__ = true;
+             }
+        }
+
+        return config;
     } catch (e) {
-        return { apiKey: '' };
+        return { apiKey: '', isCustom: false };
     }
 };
 
@@ -45,26 +78,21 @@ const getClient = () => {
         console.warn("API Key is missing. Please check your Vercel Environment Variables and REDEPLOY.");
     }
     
-    // Construct options object dynamically. 
-    // Passing 'undefined' as baseUrl to the SDK can sometimes cause it to fail to fallback to default.
     const options: any = { apiKey };
     
     if (baseUrl) {
-        // IMPORTANT: The SDK expects the base URL to NOT have a version path usually, 
-        // but for some proxies, we might need to be specific.
-        // However, standard Google GenAI behavior is baseUrl + /v1beta/...
         options.baseUrl = baseUrl;
-        console.log(`[GeminiService] Using Custom Base URL: ${baseUrl}`);
-
-        // COMPATIBILITY FIX: 
-        // Many 3rd party proxies (OneAPI/NewAPI) expect 'Authorization: Bearer <KEY>' 
-        // even for Gemini endpoints, whereas Google native uses 'x-goog-api-key'.
-        // We add the Bearer token to ensure the proxy authenticates the request correctly.
+        
+        // COMPATIBILITY FIX for Third-Party Proxies (OneAPI, NewAPI, etc.)
+        // These proxies often require the key in the 'Authorization' header.
+        // We add both 'x-goog-api-key' (SDK default) and 'Authorization' to be safe.
         options.defaultRequestOptions = {
             customHeaders: {
                 'Authorization': `Bearer ${apiKey}`,
-                'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://prompt-ctf.vercel.app', // Some proxies require referer
-                'X-Title': 'PromptCTF'
+                'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://prompt-ctf.vercel.app',
+                'X-Title': 'PromptCTF',
+                // Some proxies require forcing the content type
+                'Content-Type': 'application/json' 
             }
         };
     }
@@ -75,12 +103,12 @@ const getClient = () => {
 export const generateResponse = async (prompt: string, modelId: string): Promise<string> => {
     try {
         const client = getClient();
-        const { customModel } = getConfig();
+        const { customModel, baseUrl } = getConfig();
         
         // If user defined X_API_MODEL, force use that model instead of the game's selection
         const targetModel = customModel || modelId;
 
-        console.log(`[GeminiService] Generating with model: ${targetModel}`);
+        console.log(`[GeminiService] Generating... URL: ${baseUrl || 'Google'}, Model: ${targetModel}`);
 
         const response = await client.models.generateContent({
             model: targetModel,
@@ -88,8 +116,17 @@ export const generateResponse = async (prompt: string, modelId: string): Promise
         });
         return response.text || "No response generated.";
     } catch (error: any) {
-        console.error("Generation Error", error);
-        return `Error: ${error.message}`;
+        console.error("Generation Error Details:", error);
+        
+        let errorMsg = `Error: ${error.message}`;
+        if (error.message?.includes('404')) {
+            errorMsg += " (404 Not Found: Check your X_BASE_URL. It should likely not have /v1beta at the end, or your proxy doesn't support the Gemini Protocol.)";
+        }
+        if (error.message?.includes('400') && error.message?.includes('API key')) {
+             errorMsg += " (400 Invalid Key: The request reached the server, but the Key was rejected. If using a Proxy, ensure the Proxy accepts this Key format.)";
+        }
+        
+        return errorMsg;
     }
 };
 
