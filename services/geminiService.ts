@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, RequestOptions } from "@google/genai";
 import { Level, RunResult, Language } from "../types";
 
 // NOTE: In a production app, it is strictly recommended to move API calls to a backend 
@@ -15,10 +15,16 @@ interface ApiConfig {
 const getConfig = (): ApiConfig => {
     try {
         // Prioritize X_API_... variables if set (User custom proxy settings)
+        // We access process.env directly to ensure bundlers (Parcel/Vite) pick them up during build.
+        const xKey = process.env.X_API_KEY;
+        const stdKey = process.env.API_KEY;
+        const xUrl = process.env.X_API_URL;
+        const xModel = process.env.X_API_MODEL;
+
         return {
-            apiKey: process.env.X_API_KEY || process.env.API_KEY || '',
-            baseUrl: process.env.X_API_URL || undefined, // SDK will use default if undefined
-            customModel: process.env.X_API_MODEL || undefined
+            apiKey: xKey || stdKey || '',
+            baseUrl: xUrl || undefined, 
+            customModel: xModel || undefined
         };
     } catch (e) {
         return { apiKey: '' };
@@ -32,8 +38,15 @@ const getClient = () => {
         console.warn("API Key is missing. Please check your Vercel Environment Variables and REDEPLOY.");
     }
     
-    // Pass baseUrl if provided to support third-party proxies (New API, OneAPI, etc.)
-    return new GoogleGenAI({ apiKey, baseUrl });
+    // Construct options object dynamically. 
+    // Passing 'undefined' as baseUrl to the SDK can sometimes cause it to fail to fallback to default.
+    const options: any = { apiKey };
+    if (baseUrl) {
+        options.baseUrl = baseUrl;
+        console.log(`[GeminiService] Using custom Base URL: ${baseUrl}`);
+    }
+
+    return new GoogleGenAI(options);
 }
 
 export const generateResponse = async (prompt: string, modelId: string): Promise<string> => {

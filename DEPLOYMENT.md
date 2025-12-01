@@ -34,15 +34,11 @@ If you are using a third-party provider (e.g., New API, OneAPI) instead of the o
 | `X_API_KEY` | The API Key for your proxy. | `sk-custom-key...` |
 | `X_API_MODEL` | (Optional) Force all requests to use this model ID. | `gemini-1.5-pro` |
 
-**⚠️ CRITICAL: Frontend Variable Injection**
-- Variables like `API_KEY`, `X_API_KEY`, and `X_API_URL` are injected into the frontend JavaScript code at **Build Time**.
-- If you add or change these variables in Vercel settings, **they will not affect the live site immediately**.
-- You **MUST** go to the "Deployments" tab in Vercel, click the three dots on the latest deployment, and select **Redeploy** to trigger a new build that picks up the new keys.
+> **Note on Base URLs**: Some proxy providers expect the standard Gemini path suffix (e.g., `/v1beta`) while others mimic OpenAI. Ensure your `X_API_URL` points to the root that the Gemini SDK expects. If you see "API Key not valid" errors, check if your proxy supports the native Google Gemini protocol.
 
-### 4. Deploy
+### 4. Deploy & Redeploy
 1. Click **Deploy**.
-2. Vercel will build the project.
-3. Once finished, note your **Production Domain** (e.g., `https://prompt-ctf.vercel.app`).
+2. **IMPORTANT**: If you add environment variables *after* the initial deploy, you must go to the **Deployments** tab in Vercel, click the three dots on the latest deployment, and select **Redeploy**. This triggers a new build to inject the variables into the frontend code.
 
 ---
 
@@ -123,5 +119,7 @@ Go to the **Authentication** tab in the Supabase sidebar.
 
 ## ✅ Verification
 1. Open the deployed app.
-2. Click **Connect with Linux.do**.
-3. You should be redirected to Linux.do, authorize, and return logged in.
+2. Open the Browser Console (F12).
+3. If configured correctly, you should not see "Supabase keys missing" warnings.
+4. Click **Connect with Linux.do**.
+5. You should be redirected to Linux.do, authorize, and return logged in.

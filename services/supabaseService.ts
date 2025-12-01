@@ -13,14 +13,21 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY;
 // Export client for App.tsx usage (Session Listener)
 export let supabase: SupabaseClient | null = null;
 
+// Initialization Logic with Debugging
 if (SUPABASE_URL && SUPABASE_KEY) {
     try {
         supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        // console.log("Supabase initialized successfully.");
     } catch (e) {
         console.error("Failed to initialize Supabase client", e);
     }
 } else {
-    console.warn("Supabase keys missing. Falling back to LocalStorage.");
+    // Only warn if we are in a context where we expect them (e.g. production)
+    // Checking hostname to reduce noise in local dev without env vars
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+        console.warn("Supabase keys missing. Falling back to LocalStorage.");
+        console.warn("Debug Info: URL present?", !!SUPABASE_URL, "Key present?", !!SUPABASE_KEY);
+    }
 }
 
 // --- AUTHENTICATION API ---
