@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Level, ModelType, RunResult, Language, Submission } from '../types';
-import { generateResponse, judgeSubmission, getConfig } from '../services/geminiService';
+import { generateResponse, judgeSubmission, getAppConfig } from '../services/geminiService';
 import { saveSubmission, getHistory } from '../services/supabaseService';
 import TerminalOutput from './TerminalOutput';
 import HistoryPanel from './HistoryPanel';
-import { Play, RotateCcw, Cpu, Flag, AlertTriangle, Sparkles, History as HistoryIcon, ChevronUp, ChevronDown, Zap, ShieldCheck, Server, Globe } from 'lucide-react';
+import { Play, RotateCcw, Cpu, Flag, AlertTriangle, Sparkles, History as HistoryIcon, ChevronUp, ChevronDown, Zap, ShieldCheck, Server, Globe, Settings2 } from 'lucide-react';
 import Confetti from './Confetti';
 import { getTranslation } from '../lib/translations';
 
@@ -26,7 +26,10 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [history, setHistory] = useState<Submission[]>([]);
     const [isMissionExpanded, setIsMissionExpanded] = useState(true);
-    const [isCustomMode, setIsCustomMode] = useState(false);
+    
+    // Provider State: 'official' or 'custom'
+    const [provider, setProvider] = useState<'official' | 'custom'>('official');
+    const [availableProviders, setAvailableProviders] = useState({ hasOfficial: false, hasCustom: false });
     
     const confettiTimeoutRef = useRef<number | null>(null);
     const t = getTranslation(lang);
@@ -40,12 +43,25 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
         setIsMissionExpanded(true);
         if (confettiTimeoutRef.current) window.clearTimeout(confettiTimeoutRef.current);
         
-        // Load history for this level
         loadHistory();
         
-        // Check config
-        const config = getConfig();
-        setIsCustomMode(config.isCustom);
+        // Check Providers
+        const config = getAppConfig();
+        setAvailableProviders({ 
+            hasOfficial: config.hasOfficial, 
+            hasCustom: config.hasCustom 
+        });
+
+        // Smart Default Selection
+        // 1. If only custom is available, use custom.
+        // 2. If both, keep current or default to official.
+        // 3. If user explicitly wants custom (e.g. they set the env var), they probably want to use it.
+        if (config.hasCustom && !config.hasOfficial) {
+            setProvider('custom');
+        } else if (config.hasOfficial) {
+            // Keep existing logic: default to official unless user switched
+        }
+        
     }, [level]);
 
     const loadHistory = async () => {
@@ -70,10 +86,12 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
         const startTime = Date.now();
 
         // 1. Generate Content
-        const output = await generateResponse(prompt, model);
+        // Pass the selected provider explicitly
+        const output = await generateResponse(prompt, model, provider);
 
         // 2. Judge Content
-        const judgeResult = await judgeSubmission(level, prompt, output, lang);
+        // Use the same provider for judging to ensure connectivity consistency
+        const judgeResult = await judgeSubmission(level, prompt, output, lang, provider);
         
         const duration = Date.now() - startTime;
 
@@ -109,6 +127,11 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
         setResult(null);
         setShowConfetti(false);
         if (confettiTimeoutRef.current) window.clearTimeout(confettiTimeoutRef.current);
+    };
+
+    const toggleProvider = () => {
+        // Only toggle if we have options, or force toggle if user wants to try anyway
+        setProvider(prev => prev === 'official' ? 'custom' : 'official');
     };
 
     return (
@@ -189,18 +212,23 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
             <div className="h-14 bg-zinc-900 border-b border-border flex items-center justify-between px-4 shrink-0 shadow-md z-20">
                 <div className="flex items-center gap-3">
                      <div className="flex items-center gap-2">
-                        {isCustomMode ? (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-blue-900/30 border border-blue-800 rounded text-[10px] text-blue-300 font-mono" title="Using Custom Proxy URL">
-                                <Server size={12} />
-                                <span>CUSTOM PROXY</span>
-                            </div>
-                        ) : (
-                             <div className="flex items-center gap-1 px-2 py-1 bg-zinc-800/50 border border-zinc-700 rounded text-[10px] text-zinc-500 font-mono" title="Using Google Official API">
-                                <Globe size={12} />
-                                <span>GOOGLE API</span>
-                            </div>
-                        )}
-                        <span className="text-xs text-zinc-500 font-mono hidden md:inline ml-2">MODEL:</span>
+                        {/* PROVIDER SELECTOR */}
+                        <button 
+                            onClick={toggleProvider}
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded border text-[10px] font-mono transition-all cursor-pointer
+                                ${provider === 'custom' 
+                                    ? 'bg-blue-900/20 border-blue-800 text-blue-300 hover:bg-blue-900/40' 
+                                    : 'bg-zinc-800/50 border-zinc-700 text-zinc-400 hover:bg-zinc-800'}
+                            `}
+                            title={provider === 'custom' ? "Using Custom Proxy URL" : "Using Official Google API"}
+                        >
+                            {provider === 'custom' ? <Server size={12} /> : <Globe size={12} />}
+                            <span className="font-bold">{provider === 'custom' ? 'CUSTOM PROXY' : 'GOOGLE API'}</span>
+                        </button>
+                        
+                        <div className="h-4 w-px bg-zinc-800 mx-1"></div>
+                        
+                        <span className="text-xs text-zinc-500 font-mono hidden md:inline">MODEL:</span>
                         <select 
                             value={model}
                             onChange={(e) => setModel(e.target.value as ModelType)}
@@ -252,7 +280,6 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
             {/* 3. Split View: Editor & Output */}
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-zinc-950/30">
                 {/* Editor Section */}
-                {/* On mobile: take 40% height. On desktop: take 50% width and full height. */}
                 <div className="w-full md:w-1/2 flex flex-col border-b md:border-b-0 md:border-r border-border bg-background relative group h-[40%] md:h-auto shrink-0">
                     <span className="absolute top-0 right-0 p-2 text-[10px] font-mono text-zinc-600 bg-zinc-900/80 rounded-bl backdrop-blur-sm z-10 pointer-events-none group-hover:text-zinc-400 transition-colors">
                         EDITOR
@@ -267,9 +294,7 @@ const Playground: React.FC<PlaygroundProps> = ({ level, lang, userId, onLevelCom
                 </div>
 
                 {/* Output & Verdict Section */}
-                {/* On mobile: take remaining height (approx 60%). On desktop: take 50% width. */}
                 <div className="w-full md:w-1/2 flex flex-col bg-zinc-900/20 h-[60%] md:h-auto min-h-0">
-                     {/* The output area needs min-h-0 to allow proper scrolling within flex items */}
                      <div className="flex-1 min-h-0 relative">
                         <TerminalOutput 
                             content={result?.output || ''} 

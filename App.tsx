@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Playground from './components/Playground';
@@ -27,7 +28,15 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true); 
   const [authError, setAuthError] = useState<string | null>(null);
-  const [lang, setLang] = useState<Language>('en');
+  
+  // Auto-detect language
+  const [lang, setLang] = useState<Language>(() => {
+    if (typeof navigator !== 'undefined' && navigator.language) {
+       return navigator.language.startsWith('zh') ? 'zh' : 'en';
+    }
+    return 'en';
+  });
+
   const [view, setView] = useState<'game' | 'leaderboard'>('game');
   const [showSkip, setShowSkip] = useState(false);
   

@@ -2,169 +2,191 @@
 import { GoogleGenAI, Type, RequestOptions } from "@google/genai";
 import { Level, RunResult, Language } from "../types";
 
-// NOTE: In a production app, it is strictly recommended to move API calls to a backend 
-// (e.g. Vercel Serverless Functions) to keep the API_KEY secret.
-// Since this is a client-side demo, the Key is embedded in the JS bundle at BUILD time.
-
-export interface ApiConfig {
+// --- Configuration Types ---
+export interface ServiceConfig {
     apiKey: string;
     baseUrl?: string;
-    customModel?: string;
-    isCustom: boolean;
+    model?: string;
 }
 
-// Helper to check multiple env var permutations
-const getEnvVar = (key: string): string | undefined => {
-    // Check standard, NEXT_PUBLIC_, VITE_, and REACT_APP_ prefixes
-    // Parcel typically inlines process.env.KEY, so we must access them explicitly or hope the bundler maps them.
-    // NOTE: Direct access is required for most bundlers (Vite/Parcel) to statically analyze and replace.
-    
-    // We try direct access first (most common)
-    if (process.env[key]) return process.env[key];
-    if (process.env[`NEXT_PUBLIC_${key}`]) return process.env[`NEXT_PUBLIC_${key}`];
-    if (process.env[`VITE_${key}`]) return process.env[`VITE_${key}`];
-    if (process.env[`REACT_APP_${key}`]) return process.env[`REACT_APP_${key}`];
-    
-    return undefined;
+export interface AppConfig {
+    official: ServiceConfig;
+    custom: ServiceConfig;
+    hasOfficial: boolean;
+    hasCustom: boolean;
 }
 
-export const getConfig = (): ApiConfig => {
-    try {
-        // Prioritize Custom Keys
-        const xKey = getEnvVar('X_API_KEY');
-        const stdKey = getEnvVar('API_KEY');
-        
-        // Support both X_API_URL and X_BASE_URL
-        let xUrl = getEnvVar('X_API_URL') || getEnvVar('X_BASE_URL');
-        
-        // Sanitization: Remove trailing slash
-        if (xUrl && xUrl.endsWith('/')) {
-            xUrl = xUrl.slice(0, -1);
-        }
-
-        const xModel = getEnvVar('X_API_MODEL');
-
-        const config = {
-            apiKey: xKey || stdKey || '',
-            baseUrl: xUrl || undefined, 
-            customModel: xModel || undefined,
-            isCustom: !!xUrl
-        };
-
-        // Debug Log (Visible in Browser Console)
-        if (typeof window !== 'undefined') {
-             // Only log once to avoid spam
-             if (!(window as any).__GEMINI_CONFIG_LOGGED__) {
-                 console.log(`[GeminiService] Config Loaded:`, {
-                     hasKey: !!config.apiKey,
-                     baseUrl: config.baseUrl || 'DEFAULT (Google)',
-                     model: config.customModel || 'DEFAULT',
-                     isCustom: config.isCustom
-                 });
-                 (window as any).__GEMINI_CONFIG_LOGGED__ = true;
-             }
-        }
-
-        return config;
-    } catch (e) {
-        return { apiKey: '', isCustom: false };
-    }
+// --- Environment Variable Access ---
+// CRITICAL: Bundlers (Parcel/Webpack/Next.js) replace `process.env.VAR` with strings at build time.
+// We MUST access them explicitly. Dynamic access like `process.env[key]` often returns undefined.
+const ENV = {
+    // Official
+    API_KEY: process.env.API_KEY || process.env.NEXT_PUBLIC_API_KEY || process.env.VITE_API_KEY || process.env.REACT_APP_API_KEY,
+    
+    // Custom Base URL
+    X_BASE_URL: process.env.X_BASE_URL || process.env.NEXT_PUBLIC_X_BASE_URL || process.env.VITE_X_BASE_URL || process.env.REACT_APP_X_BASE_URL || 
+                process.env.X_API_URL || process.env.NEXT_PUBLIC_X_API_URL,
+    
+    // Custom API Key
+    X_API_KEY: process.env.X_API_KEY || process.env.NEXT_PUBLIC_X_API_KEY || process.env.VITE_X_API_KEY || process.env.REACT_APP_X_API_KEY,
+    
+    // Custom Model
+    X_API_MODEL: process.env.X_API_MODEL || process.env.NEXT_PUBLIC_X_API_MODEL || process.env.VITE_X_API_MODEL || process.env.REACT_APP_X_API_MODEL,
 };
 
-const getClient = () => {
-    const { apiKey, baseUrl } = getConfig();
+// --- Configuration Loader ---
+export const getAppConfig = (): AppConfig => {
+    // 1. Official Config
+    const officialKey = ENV.API_KEY || '';
 
-    if (!apiKey) {
-        console.warn("API Key is missing. Please check your Vercel Environment Variables and REDEPLOY.");
+    // 2. Custom Config
+    let customUrl = ENV.X_BASE_URL || '';
+    // If user didn't provide a specific custom key, try to use the official key for the proxy
+    const customKey = ENV.X_API_KEY || officialKey;
+    const customModel = ENV.X_API_MODEL;
+
+    // 3. Clean up Custom URL
+    if (customUrl) {
+        // Remove trailing slash
+        if (customUrl.endsWith('/')) {
+            customUrl = customUrl.slice(0, -1);
+        }
+        // Remove standard SDK suffixes if user pasted the full endpoint
+        // The SDK adds /v1beta/models/... automatically. We need the ROOT or BASE path.
+        // e.g. https://x666.me/v1beta -> https://x666.me
+        customUrl = customUrl.replace(/\/v1beta\/models.*$/, '');
+        customUrl = customUrl.replace(/\/v1beta$/, '');
+        customUrl = customUrl.replace(/\/goog$/, ''); // Some proxies use /goog
     }
-    
-    const options: any = { apiKey };
-    
-    if (baseUrl) {
-        options.baseUrl = baseUrl;
+
+    return {
+        official: {
+            apiKey: officialKey,
+        },
+        custom: {
+            apiKey: customKey,
+            baseUrl: customUrl,
+            model: customModel
+        },
+        hasOfficial: !!officialKey,
+        hasCustom: !!customUrl // We consider custom available if a URL is provided
+    };
+};
+
+// --- Client Factory ---
+const getClient = (mode: 'official' | 'custom') => {
+    const config = getAppConfig();
+    const targetConfig = mode === 'custom' ? config.custom : config.official;
+
+    if (!targetConfig.apiKey) {
+        console.warn(`[GeminiService] Missing API Key for mode: ${mode}`);
+    }
+
+    const options: any = { 
+        apiKey: targetConfig.apiKey 
+    };
+
+    if (mode === 'custom' && targetConfig.baseUrl) {
+        // console.log(`[GeminiService] Using Custom Proxy: ${targetConfig.baseUrl}`);
+        options.baseUrl = targetConfig.baseUrl;
         
-        // COMPATIBILITY FIX for Third-Party Proxies (OneAPI, NewAPI, etc.)
-        // These proxies often require the key in the 'Authorization' header.
-        // We add both 'x-goog-api-key' (SDK default) and 'Authorization' to be safe.
+        // CUSTOM PROXY HEADERS
+        // 1. Authorization: Bearer <key> (Required by OneAPI/NewAPI/Kong)
+        // 2. Origin: Fake origin to bypass some CORS checks on restricted proxies
         options.defaultRequestOptions = {
             customHeaders: {
-                'Authorization': `Bearer ${apiKey}`,
-                'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://prompt-ctf.vercel.app',
-                'X-Title': 'PromptCTF',
-                // Some proxies require forcing the content type
-                'Content-Type': 'application/json' 
+                'Authorization': `Bearer ${targetConfig.apiKey}`,
+                'Content-Type': 'application/json',
+                // 'Origin': 'http://localhost:1234' // Optional: Uncomment if proxy requires specific origin
             }
         };
     }
 
     return new GoogleGenAI(options);
-}
+};
 
-export const generateResponse = async (prompt: string, modelId: string): Promise<string> => {
+// --- Public API ---
+
+export const generateResponse = async (
+    prompt: string, 
+    modelId: string, 
+    provider: 'official' | 'custom' = 'official'
+): Promise<string> => {
     try {
-        const client = getClient();
-        const { customModel, baseUrl } = getConfig();
+        const config = getAppConfig();
         
-        // If user defined X_API_MODEL, force use that model instead of the game's selection
-        const targetModel = customModel || modelId;
+        // If user selected custom but no URL is set, fallback to official (or fail if official missing)
+        const effectiveProvider = (provider === 'custom' && !config.hasCustom) ? 'official' : provider;
+        
+        const client = getClient(effectiveProvider);
+        
+        // Determine model: Custom mode can override the model selection via Env Var
+        let targetModel = modelId;
+        if (effectiveProvider === 'custom' && config.custom.model) {
+            targetModel = config.custom.model;
+        }
 
-        console.log(`[GeminiService] Generating... URL: ${baseUrl || 'Google'}, Model: ${targetModel}`);
+        console.log(`[GeminiService] Generating... Provider: ${effectiveProvider.toUpperCase()} | URL: ${effectiveProvider === 'custom' ? config.custom.baseUrl : 'Google'} | Model: ${targetModel}`);
 
         const response = await client.models.generateContent({
             model: targetModel,
             contents: prompt,
         });
+        
         return response.text || "No response generated.";
     } catch (error: any) {
-        console.error("Generation Error Details:", error);
+        console.error("Generation Error:", error);
         
-        let errorMsg = `Error: ${error.message}`;
-        if (error.message?.includes('404')) {
-            errorMsg += " (404 Not Found: Check your X_BASE_URL. It should likely not have /v1beta at the end, or your proxy doesn't support the Gemini Protocol.)";
-        }
-        if (error.message?.includes('400') && error.message?.includes('API key')) {
-             errorMsg += " (400 Invalid Key: The request reached the server, but the Key was rejected. If using a Proxy, ensure the Proxy accepts this Key format.)";
+        let hint = "";
+        if (provider === 'custom') {
+            hint = `\n[Check X_BASE_URL]: Current is "${getAppConfig().custom.baseUrl}". Ensure it is the root (e.g. https://api.proxy.com) NOT including /v1beta/models.`;
         }
         
-        return errorMsg;
+        return `System Error (${provider.toUpperCase()}): ${error.message}${hint}`;
     }
 };
 
-export const judgeSubmission = async (level: Level, userPrompt: string, modelOutput: string, lang: Language): Promise<RunResult> => {
+export const judgeSubmission = async (
+    level: Level, 
+    userPrompt: string, 
+    modelOutput: string, 
+    lang: Language,
+    provider: 'official' | 'custom' = 'official'
+): Promise<RunResult> => {
     try {
-        const client = getClient();
-        const { customModel } = getConfig();
+        const config = getAppConfig();
         
-        // Use custom model if defined, otherwise default to flash for judging
-        const targetModel = customModel || 'gemini-2.5-flash';
+        // Use the same provider logic as generation
+        const effectiveProvider = (provider === 'custom' && !config.hasCustom) ? 'official' : provider;
+        const client = getClient(effectiveProvider);
+        
+        let targetModel = 'gemini-2.5-flash';
+        if (effectiveProvider === 'custom' && config.custom.model) {
+            targetModel = config.custom.model;
+        }
 
         const judgeSystemPrompt = `
-        You are an impartial CTF Judge (Capture The Flag) for a prompt engineering competition.
+        You are an impartial CTF Judge.
+        Language: ${lang === 'zh' ? 'Chinese' : 'English'}
         
-        Current Language Context: ${lang === 'zh' ? 'Chinese (Simplified)' : 'English'}
-        Please provide feedback in ${lang === 'zh' ? 'Chinese' : 'English'}.
-
-        LEVEL OBJECTIVE: ${level.description}
-        WIN CRITERIA: ${level.winCriteria}
+        LEVEL: ${level.description}
+        CRITERIA: ${level.winCriteria}
         
-        PLAYER'S PROMPT:
+        PROMPT:
         """
         ${userPrompt}
         """
         
-        MODEL'S OUTPUT (Result of player's prompt):
+        OUTPUT:
         """
         ${modelOutput}
         """
         
-        Analyze if the Model's Output successfully meets the Win Criteria based on the Player's Prompt.
-        Be strict but fair. 
-        
-        Return JSON structure:
+        Return JSON:
         {
             "success": boolean,
-            "feedback": "Short explanation of why they passed or failed (in ${lang === 'zh' ? 'Chinese' : 'English'}).",
-            "flag": "Flag string (only if success is true)"
+            "feedback": "string",
+            "flag": "string (optional)"
         }
         `;
 
@@ -186,8 +208,6 @@ export const judgeSubmission = async (level: Level, userPrompt: string, modelOut
         });
 
         const resultJson = JSON.parse(response.text || "{}");
-        
-        // Generate a synthetic flag if one wasn't provided by the judge model logic
         const finalFlag = resultJson.success ? `CTF{${level.id}_CLEARED_${Math.floor(Math.random() * 9999)}}` : undefined;
 
         return {
@@ -200,7 +220,7 @@ export const judgeSubmission = async (level: Level, userPrompt: string, modelOut
     } catch (error: any) {
         return {
             success: false,
-            feedback: `Judge System Error: ${error.message}`,
+            feedback: `Judge System Error (${provider}): ${error.message}`,
             output: modelOutput
         };
     }
