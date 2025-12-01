@@ -1,23 +1,32 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Force Node.js runtime (prevents Edge Runtime confusion)
+export const config = {
+  runtime: 'nodejs',
+};
+
 export default function handler(req: VercelRequest, res: VercelResponse) {
-  const CLIENT_ID = process.env.LINUX_DO_CLIENT_ID;
-  
-  // Use VERCEL_URL if available (production), otherwise localhost. 
-  // IMPORTANT: VERCEL_URL does not include 'https://' prefix.
-  const baseUrl = process.env.VERCEL_URL 
-    ? `https://${process.env.VERCEL_URL}` 
-    : 'http://localhost:1234';
+  try {
+    const CLIENT_ID = process.env.LINUX_DO_CLIENT_ID;
+    
+    // Determine Base URL safely
+    const host = process.env.VERCEL_URL || 'localhost:1234';
+    const protocol = process.env.VERCEL_URL ? 'https' : 'http';
+    const baseUrl = `${protocol}://${host}`;
 
-  const REDIRECT_URI = `${baseUrl}/api/linuxdo-callback`;
-  
-  if (!CLIENT_ID) {
-    return res.status(500).json({ error: 'Missing Linux.do Client ID configuration' });
+    if (!CLIENT_ID) {
+      console.error("Configuration Error: LINUX_DO_CLIENT_ID is missing in process.env");
+      // Redirect to frontend with error message
+      return res.redirect(`${baseUrl}?error=${encodeURIComponent('Missing Server Config: LINUX_DO_CLIENT_ID')}`);
+    }
+
+    const REDIRECT_URI = `${baseUrl}/api/linuxdo-callback`;
+    const authUrl = `https://connect.linux.do/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=read`;
+
+    res.redirect(authUrl);
+  } catch (error: any) {
+    console.error("Login Function Crash:", error);
+    res.status(500).send(`Internal Server Error: ${error.message}`);
   }
-
-  // Linux.do (Connect) OAuth Authorization URL
-  const authUrl = `https://connect.linux.do/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=read`;
-
-  res.redirect(authUrl);
 }

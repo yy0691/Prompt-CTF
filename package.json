@@ -1,6 +1,7 @@
+
 {
   "name": "prompt-ctf",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Gamified Prompt Engineering Learning Platform",
   "source": "index.html",
   "scripts": {
@@ -13,7 +14,6 @@
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "axios": "^1.6.7",
     "jsonwebtoken": "^9.0.2",
     "cookie": "^0.6.0"
   },
@@ -23,6 +23,7 @@
     "buffer": "^6.0.3",
     "tailwindcss": "^3.4.1",
     "postcss": "^8.4.35",
+    "@vercel/node": "^3.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/jsonwebtoken": "^9.0.5",

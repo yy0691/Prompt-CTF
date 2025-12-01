@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Terminal, Github, Mail, AlertCircle } from 'lucide-react';
 import { Language } from '../types';
 import { getTranslation } from '../lib/translations';
@@ -7,14 +7,21 @@ import { loginWithSocial, loginWithEmail, supabase } from '../services/supabaseS
 
 interface AuthPageProps {
     lang: Language;
+    initialError?: string | null;
 }
 
-const AuthPage: React.FC<AuthPageProps> = ({ lang }) => {
+const AuthPage: React.FC<AuthPageProps> = ({ lang, initialError }) => {
     const [isLoading, setIsLoading] = useState<string | null>(null);
     const [email, setEmail] = useState("");
-    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [errorMsg, setErrorMsg] = useState<string | null>(initialError || null);
     const [infoMsg, setInfoMsg] = useState<string | null>(null);
     const t = getTranslation(lang);
+
+    useEffect(() => {
+        if (initialError) {
+            setErrorMsg(initialError);
+        }
+    }, [initialError]);
 
     const handleRealLogin = async (provider: 'google' | 'github' | 'linuxdo' | 'email') => {
         setIsLoading(provider);
@@ -43,7 +50,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ lang }) => {
 
     const handleClick = (provider: 'google' | 'github' | 'linuxdo' | 'email') => {
         // STRICT CHECK: If supabase client is missing (env vars not set), block login.
-        if (!supabase) {
+        // Exception: Linux.do flow is handled by server-side function which checks its own envs.
+        if (!supabase && provider !== 'linuxdo') {
             setErrorMsg(lang === 'zh' 
                 ? "配置错误：未检测到 Supabase 环境变量，无法进行真实登录。" 
                 : "Configuration Error: Supabase environment variables missing. Real auth unavailable.");
@@ -68,9 +76,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ lang }) => {
                 </div>
 
                 {errorMsg && (
-                    <div className="mb-4 p-3 bg-red-950/30 border border-red-900/50 rounded flex items-center gap-2 text-xs text-red-400">
-                        <AlertCircle size={14} />
-                        {errorMsg}
+                    <div className="mb-4 p-3 bg-red-950/30 border border-red-900/50 rounded flex items-center gap-2 text-xs text-red-400 break-words w-full">
+                        <AlertCircle size={14} className="shrink-0" />
+                        <span>{errorMsg}</span>
                     </div>
                 )}
 

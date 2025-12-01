@@ -25,7 +25,8 @@ function parseJwt (token: string) {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true); // New loading state
+  const [isAuthLoading, setIsAuthLoading] = useState(true); 
+  const [authError, setAuthError] = useState<string | null>(null);
   const [lang, setLang] = useState<Language>('en');
   const [view, setView] = useState<'game' | 'leaderboard'>('game');
   
@@ -44,8 +45,19 @@ export default function App() {
     let mounted = true;
 
     const initAuth = async () => {
-        // A. Check for Linux.do Token in URL Query Params (Custom Flow)
         const params = new URLSearchParams(window.location.search);
+        
+        // A. Check for Error
+        const errorParam = params.get('error');
+        if (errorParam) {
+            setAuthError(decodeURIComponent(errorParam));
+            // Clean URL
+            window.history.replaceState({}, document.title, "/");
+            if (mounted) setIsAuthLoading(false);
+            return;
+        }
+
+        // B. Check for Linux.do Token in URL Query Params (Custom Flow)
         const token = params.get('token');
         
         if (token) {
@@ -67,7 +79,7 @@ export default function App() {
             }
         }
 
-        // B. Check Supabase Session (Standard OAuth Flow - Google/Github)
+        // C. Check Supabase Session (Standard OAuth Flow - Google/Github)
         if (!supabase) {
             console.warn("Supabase not initialized. Auth disabled.");
             if (mounted) setIsAuthLoading(false);
@@ -89,7 +101,6 @@ export default function App() {
     const { data: { subscription } } = supabase?.auth.onAuthStateChange(async (event, session) => {
         console.log("Auth Event:", event);
         if (event === 'SIGNED_IN' && session?.user) {
-            // Only trigger loading if we don't already have the user to avoid flicker
             if (!user || user.id !== session.user.id) {
                 setIsAuthLoading(true);
                 await handleAuthUser(session.user);
@@ -127,6 +138,7 @@ export default function App() {
     try {
         const syncedUser = await syncUser(userData);
         setUser(syncedUser);
+        setAuthError(null); // Clear error on success
     } catch (e) {
         console.error("Sync failed", e);
         setUser(userData);
@@ -187,7 +199,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <AuthPage lang={lang} />;
+    return <AuthPage lang={lang} initialError={authError} />;
   }
 
   if (!currentLevel || levels.length === 0) {
