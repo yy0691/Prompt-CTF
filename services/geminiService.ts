@@ -18,7 +18,14 @@ const getConfig = (): ApiConfig => {
         // We access process.env directly to ensure bundlers (Parcel/Vite) pick them up during build.
         const xKey = process.env.X_API_KEY;
         const stdKey = process.env.API_KEY;
-        const xUrl = process.env.X_API_URL;
+        
+        // Support both X_API_URL (documented) and X_BASE_URL (common user preference)
+        // Sanitization: Remove trailing slash to prevent double slashes in SDK constructed paths
+        let xUrl = process.env.X_API_URL || process.env.X_BASE_URL;
+        if (xUrl && xUrl.endsWith('/')) {
+            xUrl = xUrl.slice(0, -1);
+        }
+
         const xModel = process.env.X_API_MODEL;
 
         return {
@@ -41,9 +48,25 @@ const getClient = () => {
     // Construct options object dynamically. 
     // Passing 'undefined' as baseUrl to the SDK can sometimes cause it to fail to fallback to default.
     const options: any = { apiKey };
+    
     if (baseUrl) {
+        // IMPORTANT: The SDK expects the base URL to NOT have a version path usually, 
+        // but for some proxies, we might need to be specific.
+        // However, standard Google GenAI behavior is baseUrl + /v1beta/...
         options.baseUrl = baseUrl;
-        console.log(`[GeminiService] Using custom Base URL: ${baseUrl}`);
+        console.log(`[GeminiService] Using Custom Base URL: ${baseUrl}`);
+
+        // COMPATIBILITY FIX: 
+        // Many 3rd party proxies (OneAPI/NewAPI) expect 'Authorization: Bearer <KEY>' 
+        // even for Gemini endpoints, whereas Google native uses 'x-goog-api-key'.
+        // We add the Bearer token to ensure the proxy authenticates the request correctly.
+        options.defaultRequestOptions = {
+            customHeaders: {
+                'Authorization': `Bearer ${apiKey}`,
+                'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://prompt-ctf.vercel.app', // Some proxies require referer
+                'X-Title': 'PromptCTF'
+            }
+        };
     }
 
     return new GoogleGenAI(options);
@@ -56,6 +79,8 @@ export const generateResponse = async (prompt: string, modelId: string): Promise
         
         // If user defined X_API_MODEL, force use that model instead of the game's selection
         const targetModel = customModel || modelId;
+
+        console.log(`[GeminiService] Generating with model: ${targetModel}`);
 
         const response = await client.models.generateContent({
             model: targetModel,
