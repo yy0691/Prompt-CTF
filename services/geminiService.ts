@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Level, RunResult, Language } from "../types";
 
@@ -5,32 +6,46 @@ import { Level, RunResult, Language } from "../types";
 // (e.g. Vercel Serverless Functions) to keep the API_KEY secret.
 // Since this is a client-side demo, the Key is embedded in the JS bundle at BUILD time.
 
-const getApiKey = () => {
+interface ApiConfig {
+    apiKey: string;
+    baseUrl?: string;
+    customModel?: string;
+}
+
+const getConfig = (): ApiConfig => {
     try {
-        // Parcel/Vite will replace 'process.env.API_KEY' with the actual string value during the build process.
-        // If the variable is not set during build, this usually resolves to undefined.
-        return process.env.API_KEY || '';
+        // Prioritize X_API_... variables if set (User custom proxy settings)
+        return {
+            apiKey: process.env.X_API_KEY || process.env.API_KEY || '',
+            baseUrl: process.env.X_API_URL || undefined, // SDK will use default if undefined
+            customModel: process.env.X_API_MODEL || undefined
+        };
     } catch (e) {
-        // Fallback for environments where process is not defined at all
-        return '';
+        return { apiKey: '' };
     }
 };
 
 const getClient = () => {
-    const apiKey = getApiKey();
+    const { apiKey, baseUrl } = getConfig();
 
     if (!apiKey) {
         console.warn("API Key is missing. Please check your Vercel Environment Variables and REDEPLOY.");
     }
     
-    return new GoogleGenAI({ apiKey });
+    // Pass baseUrl if provided to support third-party proxies (New API, OneAPI, etc.)
+    return new GoogleGenAI({ apiKey, baseUrl });
 }
 
 export const generateResponse = async (prompt: string, modelId: string): Promise<string> => {
     try {
         const client = getClient();
+        const { customModel } = getConfig();
+        
+        // If user defined X_API_MODEL, force use that model instead of the game's selection
+        const targetModel = customModel || modelId;
+
         const response = await client.models.generateContent({
-            model: modelId,
+            model: targetModel,
             contents: prompt,
         });
         return response.text || "No response generated.";
@@ -43,7 +58,11 @@ export const generateResponse = async (prompt: string, modelId: string): Promise
 export const judgeSubmission = async (level: Level, userPrompt: string, modelOutput: string, lang: Language): Promise<RunResult> => {
     try {
         const client = getClient();
+        const { customModel } = getConfig();
         
+        // Use custom model if defined, otherwise default to flash for judging
+        const targetModel = customModel || 'gemini-2.5-flash';
+
         const judgeSystemPrompt = `
         You are an impartial CTF Judge (Capture The Flag) for a prompt engineering competition.
         
@@ -75,7 +94,7 @@ export const judgeSubmission = async (level: Level, userPrompt: string, modelOut
         `;
 
         const response = await client.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: targetModel,
             contents: judgeSystemPrompt,
             config: {
                 responseMimeType: "application/json",

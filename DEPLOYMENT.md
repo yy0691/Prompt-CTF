@@ -17,7 +17,7 @@ In the Vercel Project Settings, add the following Environment Variables:
 
 | Variable Name | Description | Where to find it |
 |:---|:---|:---|
-| `API_KEY` | Google Gemini API Key | [Google AI Studio](https://aistudio.google.com/) |
+| `API_KEY` | Google Gemini API Key (Official) | [Google AI Studio](https://aistudio.google.com/) |
 | `SUPABASE_URL` | Supabase Project URL | Supabase -> Settings -> API |
 | `SUPABASE_KEY` | Supabase Anon / Public Key | Supabase -> Settings -> API |
 | `LINUX_DO_CLIENT_ID` | Linux.do Connect Client ID | [Linux.do Connect](https://connect.linux.do/) |
@@ -25,12 +25,21 @@ In the Vercel Project Settings, add the following Environment Variables:
 | `SUPABASE_SERVICE_KEY` | Service Role Key (for backend syncing) | Supabase -> Settings -> API (Secret!) |
 | `SUPABASE_JWT_SECRET` | JWT Secret (for signing tokens) | Supabase -> Settings -> API -> JWT Settings |
 
+### 3. Custom Proxy Configuration (Optional)
+If you are using a third-party provider (e.g., New API, OneAPI) instead of the official Google API, use these variables. **These will override the standard `API_KEY`.**
+
+| Variable Name | Description | Example |
+|:---|:---|:---|
+| `X_API_URL` | The Base URL of your proxy provider. | `https://api.your-proxy.com` |
+| `X_API_KEY` | The API Key for your proxy. | `sk-custom-key...` |
+| `X_API_MODEL` | (Optional) Force all requests to use this model ID. | `gemini-1.5-pro` |
+
 **⚠️ CRITICAL: Frontend Variable Injection**
-- Variables like `API_KEY` and `SUPABASE_URL` are injected into the frontend JavaScript code at **Build Time**.
+- Variables like `API_KEY`, `X_API_KEY`, and `X_API_URL` are injected into the frontend JavaScript code at **Build Time**.
 - If you add or change these variables in Vercel settings, **they will not affect the live site immediately**.
 - You **MUST** go to the "Deployments" tab in Vercel, click the three dots on the latest deployment, and select **Redeploy** to trigger a new build that picks up the new keys.
 
-### 3. Deploy
+### 4. Deploy
 1. Click **Deploy**.
 2. Vercel will build the project.
 3. Once finished, note your **Production Domain** (e.g., `https://prompt-ctf.vercel.app`).

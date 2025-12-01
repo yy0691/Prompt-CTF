@@ -3,17 +3,12 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Submission, LeaderboardEntry, User } from "../types";
 
 // --- CONFIGURATION ---
-// Safely access process.env in a way that doesn't crash browser if undefined
-const getEnv = (key: string) => {
-    try {
-        return process.env[key] || '';
-    } catch {
-        return '';
-    }
-}
+// IMPORTANT: Access process.env properties DIRECTLY (e.g. process.env.SUPABASE_URL).
+// Bundlers like Parcel/Webpack replace these strings at BUILD TIME.
+// Dynamic access like process.env[key] will FAIL in the browser because process.env doesn't exist at runtime.
 
-const SUPABASE_URL = getEnv('SUPABASE_URL');
-const SUPABASE_KEY = getEnv('SUPABASE_KEY');
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 // Export client for App.tsx usage (Session Listener)
 export let supabase: SupabaseClient | null = null;
