@@ -1,22 +1,28 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Level, RunResult, Language } from "../types";
 
-// NOTE: In a real app, this should be handled via backend proxy to hide API keys.
-// For this demo, we assume the environment variable is present or the user provides it.
-const getClient = () => {
-    let apiKey = '';
-    // Safety check for process.env access to avoid ReferenceError in browser
+// NOTE: In a production app, it is strictly recommended to move API calls to a backend 
+// (e.g. Vercel Serverless Functions) to keep the API_KEY secret.
+// Since this is a client-side demo, the Key is embedded in the JS bundle at BUILD time.
+
+const getApiKey = () => {
     try {
-        if (typeof process !== 'undefined' && process.env) {
-            apiKey = process.env.API_KEY || '';
-        }
+        // Parcel/Vite will replace 'process.env.API_KEY' with the actual string value during the build process.
+        // If the variable is not set during build, this usually resolves to undefined.
+        return process.env.API_KEY || '';
     } catch (e) {
-        console.warn("Unable to access process.env");
+        // Fallback for environments where process is not defined at all
+        return '';
     }
+};
+
+const getClient = () => {
+    const apiKey = getApiKey();
 
     if (!apiKey) {
-        console.warn("API Key is missing. Calls will fail.");
+        console.warn("API Key is missing. Please check your Vercel Environment Variables and REDEPLOY.");
     }
+    
     return new GoogleGenAI({ apiKey });
 }
 

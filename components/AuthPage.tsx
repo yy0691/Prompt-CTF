@@ -1,27 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState } from 'react';
 import { Terminal, Github, Mail, AlertCircle } from 'lucide-react';
-import { User, Language } from '../types';
+import { Language } from '../types';
 import { getTranslation } from '../lib/translations';
 import { loginWithSocial, loginWithEmail, supabase } from '../services/supabaseService';
 
 interface AuthPageProps {
-    onLogin: (user: User) => void; // Used for Fallback mode only
     lang: Language;
 }
 
-const AuthPage: React.FC<AuthPageProps> = ({ onLogin, lang }) => {
+const AuthPage: React.FC<AuthPageProps> = ({ lang }) => {
     const [isLoading, setIsLoading] = useState<string | null>(null);
     const [email, setEmail] = useState("");
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [infoMsg, setInfoMsg] = useState<string | null>(null);
-    const timeoutRef = useRef<number | null>(null);
     const t = getTranslation(lang);
-
-    useEffect(() => {
-        return () => {
-            if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-        };
-    }, []);
 
     const handleRealLogin = async (provider: 'google' | 'github' | 'linuxdo' | 'email') => {
         setIsLoading(provider);
@@ -48,40 +41,15 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, lang }) => {
         }
     };
 
-    const handleMockLogin = (provider: User['provider']) => {
-        setIsLoading(provider);
-        timeoutRef.current = window.setTimeout(() => {
-            let name = 'Demo User';
-            let avatar = undefined;
-
-            if (provider === 'github') {
-                name = 'GitHub User';
-                avatar = 'https://github.com/shadcn.png';
-            } else if (provider === 'google') {
-                name = 'Google User';
-            } else if (provider === 'linuxdo') {
-                name = 'Linux.do User';
-                avatar = 'https://linux.do/user_avatar/linux.do/system/288/14605_2.png'; 
-            }
-
-            onLogin({
-                id: 'usr_' + Math.random().toString(36).substr(2, 9),
-                name,
-                email: email || `user@${provider}.com`,
-                provider,
-                avatar,
-                totalFlags: 0,
-                lastFlagAt: Date.now()
-            });
-        }, 1500);
-    };
-
     const handleClick = (provider: 'google' | 'github' | 'linuxdo' | 'email') => {
-        if (supabase) {
-            handleRealLogin(provider);
-        } else {
-            handleMockLogin(provider === 'email' ? 'email' : provider);
+        // STRICT CHECK: If supabase client is missing (env vars not set), block login.
+        if (!supabase) {
+            setErrorMsg(lang === 'zh' 
+                ? "配置错误：未检测到 Supabase 环境变量，无法进行真实登录。" 
+                : "Configuration Error: Supabase environment variables missing. Real auth unavailable.");
+            return;
         }
+        handleRealLogin(provider);
     };
 
     return (

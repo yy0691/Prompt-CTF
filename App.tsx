@@ -69,6 +69,7 @@ export default function App() {
 
         // B. Check Supabase Session (Standard OAuth Flow - Google/Github)
         if (!supabase) {
+            console.warn("Supabase not initialized. Auth disabled.");
             if (mounted) setIsAuthLoading(false);
             return;
         }
@@ -88,9 +89,12 @@ export default function App() {
     const { data: { subscription } } = supabase?.auth.onAuthStateChange(async (event, session) => {
         console.log("Auth Event:", event);
         if (event === 'SIGNED_IN' && session?.user) {
-            setIsAuthLoading(true);
-            await handleAuthUser(session.user);
-            setIsAuthLoading(false);
+            // Only trigger loading if we don't already have the user to avoid flicker
+            if (!user || user.id !== session.user.id) {
+                setIsAuthLoading(true);
+                await handleAuthUser(session.user);
+                setIsAuthLoading(false);
+            }
         } else if (event === 'SIGNED_OUT') {
             setUser(null);
         }
@@ -183,7 +187,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <AuthPage onLogin={handleLogin} lang={lang} />;
+    return <AuthPage lang={lang} />;
   }
 
   if (!currentLevel || levels.length === 0) {

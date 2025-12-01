@@ -28,12 +28,10 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     console.warn("Supabase keys missing. Falling back to LocalStorage.");
 }
 
-// ... rest of the file remains same, only modifying the init logic above ...
-
 // --- AUTHENTICATION API ---
 
 export const loginWithSocial = async (provider: 'google' | 'github' | 'linuxdo') => {
-    if (!supabase) throw new Error("Supabase not configured");
+    if (!supabase) throw new Error("Supabase not configured. Please set API Keys in Vercel.");
     
     // Note: Linux.do would require a custom OIDC provider configuration in Supabase.
     // We map 'linuxdo' to a custom provider string if needed, or assume standard OAuth.
@@ -41,12 +39,10 @@ export const loginWithSocial = async (provider: 'google' | 'github' | 'linuxdo')
     const providerName = provider === 'linuxdo' ? 'oidc' : provider; 
     
     const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: providerName,
+        provider: providerName as any,
         options: {
             // Redirect back to the deployment URL
             redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-            // For Linux.do custom OIDC, you might need extra scopes or params
-            // queryParams: provider === 'linuxdo' ? { 'issuer': 'https://linux.do' } : undefined
         }
     });
 
@@ -55,7 +51,7 @@ export const loginWithSocial = async (provider: 'google' | 'github' | 'linuxdo')
 };
 
 export const loginWithEmail = async (email: string) => {
-    if (!supabase) throw new Error("Supabase not configured");
+    if (!supabase) throw new Error("Supabase not configured. Please set API Keys in Vercel.");
     
     // Uses Magic Link
     const { data, error } = await supabase.auth.signInWithOtp({
