@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Playground from './components/Playground';
@@ -8,6 +7,17 @@ import { getCurriculum } from './data/curriculum';
 import { UserProgress, User, Language } from './types';
 import { syncUser, supabase, logoutUser } from './services/supabaseService';
 import { Menu, AlertTriangle } from 'lucide-react';
+
+// Simple JWT decoder (to avoid big library payload on frontend)
+function parseJwt (token: string) {
+    var base64Url = token.split('.')[1];
+    var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+
+    return JSON.parse(jsonPayload);
+}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -26,20 +36,45 @@ export default function App() {
 
   // 1. Session Listener (For Real Auth)
   useEffect(() => {
+    // A. Check for Linux.do Token in URL
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    
+    if (token) {
+        try {
+            const decoded = parseJwt(token);
+            const userData: User = {
+                id: decoded.sub,
+                name: decoded.name || 'Linux.do User',
+                avatar: decoded.avatar,
+                provider: 'linuxdo',
+                totalFlags: 0, 
+                lastFlagAt: Date.now()
+            };
+            // Clear URL
+            window.history.replaceState({}, document.title, "/");
+            // Sync
+            handleLogin(userData);
+            return;
+        } catch (e) {
+            console.error("Invalid Token", e);
+        }
+    }
+
+    // B. Check Supabase Session
     if (!supabase) return;
 
-    // Check active session on mount (handles redirect return)
     supabase.auth.getSession().then(({ data: { session } }) => {
         if (session && session.user) {
             handleAuthUser(session.user);
         }
     });
 
-    // Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         if (session && session.user) {
             handleAuthUser(session.user);
-        } else {
+        } else if (!token) { 
+            // Only clear user if we aren't in the middle of a LinuxDo login
             setUser(null);
         }
     });
@@ -77,10 +112,8 @@ export default function App() {
   const handleLogout = async () => {
       if (supabase) {
           await logoutUser();
-          setUser(null);
-      } else {
-          setUser(null);
       }
+      setUser(null);
   };
 
   const { chapters, levels } = useMemo(() => {

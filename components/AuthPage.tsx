@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Terminal, Github, Mail, AlertCircle } from 'lucide-react';
 import { User, Language } from '../types';
@@ -35,6 +34,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, lang }) => {
                 await loginWithEmail(email);
                 setInfoMsg(lang === 'zh' ? '登录链接已发送至您的邮箱，请查收。' : 'Magic link sent! Check your email.');
                 setIsLoading(null);
+            } else if (provider === 'linuxdo') {
+                // Redirect to our Vercel Serverless Function
+                window.location.href = '/api/linuxdo-login';
             } else {
                 await loginWithSocial(provider);
                 // Redirect happens automatically
