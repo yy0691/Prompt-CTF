@@ -1,0 +1,5 @@
+{
+  "name": "Prompt CTF",
+  "description": "A gamified prompt engineering learning platform where users solve challenges to capture flags using the Gemini API.",
+  "requestFramePermissions": []
+}
