@@ -2,44 +2,33 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Submission, LeaderboardEntry, User } from "../types";
 
-/**
- * --- DATABASE SETUP (Run in Supabase SQL Editor) ---
- * 
- * create table users (
- *   id text primary key,
- *   name text,
- *   email text,
- *   avatar text,
- *   provider text,
- *   total_flags int default 0,
- *   last_flag_at bigint
- * );
- * 
- * create table submissions (
- *   id text primary key,
- *   user_id text references users(id),
- *   level_id text not null,
- *   prompt text,
- *   output text,
- *   success boolean,
- *   feedback text,
- *   duration_ms int,
- *   timestamp bigint
- * );
- */
-
 // --- CONFIGURATION ---
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+// Safely access process.env in a way that doesn't crash browser if undefined
+const getEnv = (key: string) => {
+    try {
+        return process.env[key] || '';
+    } catch {
+        return '';
+    }
+}
+
+const SUPABASE_URL = getEnv('SUPABASE_URL');
+const SUPABASE_KEY = getEnv('SUPABASE_KEY');
 
 // Export client for App.tsx usage (Session Listener)
 export let supabase: SupabaseClient | null = null;
 
 if (SUPABASE_URL && SUPABASE_KEY) {
-    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    try {
+        supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    } catch (e) {
+        console.error("Failed to initialize Supabase client", e);
+    }
 } else {
     console.warn("Supabase keys missing. Falling back to LocalStorage.");
 }
+
+// ... rest of the file remains same, only modifying the init logic above ...
 
 // --- AUTHENTICATION API ---
 

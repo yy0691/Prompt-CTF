@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Playground from './components/Playground';
@@ -6,21 +7,25 @@ import Leaderboard from './components/Leaderboard';
 import { getCurriculum } from './data/curriculum';
 import { UserProgress, User, Language } from './types';
 import { syncUser, supabase, logoutUser } from './services/supabaseService';
-import { Menu, AlertTriangle } from 'lucide-react';
+import { Menu, AlertTriangle, Loader2 } from 'lucide-react';
 
 // Simple JWT decoder (to avoid big library payload on frontend)
 function parseJwt (token: string) {
-    var base64Url = token.split('.')[1];
-    var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-
-    return JSON.parse(jsonPayload);
+    try {
+        var base64Url = token.split('.')[1];
+        var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        return JSON.parse(jsonPayload);
+    } catch (e) {
+        return null;
+    }
 }
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true); // New loading state
   const [lang, setLang] = useState<Language>('en');
   const [view, setView] = useState<'game' | 'leaderboard'>('game');
   
@@ -36,50 +41,65 @@ export default function App() {
 
   // 1. Session Listener (For Real Auth)
   useEffect(() => {
-    // A. Check for Linux.do Token in URL
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    
-    if (token) {
-        try {
+    let mounted = true;
+
+    const initAuth = async () => {
+        // A. Check for Linux.do Token in URL Query Params (Custom Flow)
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token');
+        
+        if (token) {
             const decoded = parseJwt(token);
-            const userData: User = {
-                id: decoded.sub,
-                name: decoded.name || 'Linux.do User',
-                avatar: decoded.avatar,
-                provider: 'linuxdo',
-                totalFlags: 0, 
-                lastFlagAt: Date.now()
-            };
-            // Clear URL
-            window.history.replaceState({}, document.title, "/");
-            // Sync
-            handleLogin(userData);
+            if (decoded && decoded.sub) {
+                const userData: User = {
+                    id: decoded.sub,
+                    name: decoded.name || 'Linux.do User',
+                    avatar: decoded.avatar,
+                    provider: 'linuxdo',
+                    totalFlags: 0, 
+                    lastFlagAt: Date.now()
+                };
+                // Clear URL to prevent token reuse issues
+                window.history.replaceState({}, document.title, "/");
+                await handleLogin(userData);
+                if (mounted) setIsAuthLoading(false);
+                return;
+            }
+        }
+
+        // B. Check Supabase Session (Standard OAuth Flow - Google/Github)
+        if (!supabase) {
+            if (mounted) setIsAuthLoading(false);
             return;
-        } catch (e) {
-            console.error("Invalid Token", e);
         }
-    }
 
-    // B. Check Supabase Session
-    if (!supabase) return;
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
+        // Check initial session
+        const { data: { session } } = await supabase.auth.getSession();
         if (session && session.user) {
-            handleAuthUser(session.user);
+            await handleAuthUser(session.user);
         }
-    });
+        
+        if (mounted) setIsAuthLoading(false);
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        if (session && session.user) {
-            handleAuthUser(session.user);
-        } else if (!token) { 
-            // Only clear user if we aren't in the middle of a LinuxDo login
+    initAuth();
+
+    // Listen for auth changes (Redirects trigger SIGNED_IN)
+    const { data: { subscription } } = supabase?.auth.onAuthStateChange(async (event, session) => {
+        console.log("Auth Event:", event);
+        if (event === 'SIGNED_IN' && session?.user) {
+            setIsAuthLoading(true);
+            await handleAuthUser(session.user);
+            setIsAuthLoading(false);
+        } else if (event === 'SIGNED_OUT') {
             setUser(null);
         }
-    });
+    }) || { data: { subscription: { unsubscribe: () => {} } } };
 
-    return () => subscription.unsubscribe();
+    return () => {
+        mounted = false;
+        subscription.unsubscribe();
+    };
   }, []);
 
   // Helper to normalize Supabase user to App User
@@ -95,7 +115,7 @@ export default function App() {
           lastFlagAt: Date.now()
       };
       // Sync with DB to get real stats
-      handleLogin(userData);
+      await handleLogin(userData);
   };
 
   // Sync user with DB
@@ -152,6 +172,15 @@ export default function App() {
         setUser({ ...user, totalFlags: (user.totalFlags || 0) + 1 });
     }
   };
+
+  if (isAuthLoading) {
+    return (
+        <div className="flex h-[100dvh] w-screen items-center justify-center bg-background text-zinc-500 flex-col gap-4">
+            <Loader2 size={32} className="animate-spin text-primary" />
+            <p className="text-sm font-mono animate-pulse">Initializing Protocol Omega...</p>
+        </div>
+    );
+  }
 
   if (!user) {
     return <AuthPage onLogin={handleLogin} lang={lang} />;

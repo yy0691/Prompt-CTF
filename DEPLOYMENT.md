@@ -25,9 +25,7 @@ In the Vercel Project Settings, add the following Environment Variables:
 | `SUPABASE_SERVICE_KEY` | Service Role Key (for backend syncing) | Supabase -> Settings -> API (Secret!) |
 | `SUPABASE_JWT_SECRET` | JWT Secret (for signing tokens) | Supabase -> Settings -> API -> JWT Settings |
 
-**Note:** 
-- `SUPABASE_KEY` is the **anon** key (safe for public).
-- `SUPABASE_SERVICE_KEY` is the **service_role** key (keep secret, used by backend API).
+**⚠️ CRITICAL:** After adding or changing these variables, you MUST go to the "Deployments" tab and click **Redeploy**. React apps bake these variables in at build time!
 
 ### 3. Deploy
 1. Click **Deploy**.
