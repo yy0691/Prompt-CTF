@@ -2,10 +2,10 @@
   "name": "prompt-ctf",
   "version": "1.0.0",
   "description": "Gamified Prompt Engineering Learning Platform",
-  "main": "index.js",
+  "source": "index.html",
   "scripts": {
-    "start": "parcel index.html",
-    "build": "parcel build index.html"
+    "start": "parcel",
+    "build": "parcel build"
   },
   "dependencies": {
     "@google/genai": "latest",
