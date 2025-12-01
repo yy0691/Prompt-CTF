@@ -45,7 +45,7 @@ export default function App() {
   useEffect(() => {
     let mounted = true;
 
-    // Safety Timeout: Force app to load if Auth hangs for more than 5 seconds (e.g. slow network)
+    // Safety Timeout: Force app to load if Auth hangs for more than 15 seconds (e.g. slow network)
     const safetyTimeout = setTimeout(() => {
         if (mounted) {
             console.warn("Auth initialization timed out. Forcing load.");
@@ -55,7 +55,7 @@ export default function App() {
                 setShowSkip(true);
             }
         }
-    }, 5000); // Reduced to 5s for better UX
+    }, 15000); // Increased to 15s for better UX on slow connections
 
     const initAuth = async () => {
         try {

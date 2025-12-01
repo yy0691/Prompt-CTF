@@ -9,10 +9,19 @@ export const config = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Determine Base URL safely
-  const host = process.env.VERCEL_URL || 'localhost:1234';
-  const protocol = process.env.VERCEL_URL ? 'https' : 'http';
-  const baseUrl = `${protocol}://${host}`;
+  // Robust Base URL resolution (Must match login.ts logic EXACTLY)
+  let baseUrl = process.env.APP_URL;
+    
+  if (!baseUrl) {
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const protocol = req.headers['x-forwarded-proto'] || 'https';
+      const h = Array.isArray(host) ? host[0] : host;
+      const p = Array.isArray(protocol) ? protocol[0] : protocol;
+      baseUrl = `${p}://${h || 'localhost:1234'}`;
+  }
+  
+  baseUrl = baseUrl.replace(/\/$/, '');
+  const REDIRECT_URI = `${baseUrl}/api/linuxdo-callback`;
 
   try {
     const code = req.query.code as string;
@@ -43,10 +52,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error('No authorization code provided from Linux.do');
     }
 
-    const REDIRECT_URI = `${baseUrl}/api/linuxdo-callback`;
-
-    // 3. Exchange Code for Access Token using native fetch (No Axios)
-    console.log(`[Linux.do Auth] Exchanging code...`);
+    // 3. Exchange Code for Access Token
+    console.log(`[Linux.do Auth] Exchanging code... Redirect URI: ${REDIRECT_URI}`);
+    
     const tokenParams = new URLSearchParams({
       client_id: LINUX_DO_CLIENT_ID!,
       client_secret: LINUX_DO_CLIENT_SECRET!,
@@ -57,14 +65,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const tokenRes = await fetch('https://connect.linux.do/oauth2/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: tokenParams
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: tokenParams.toString() // Explicitly convert to string
     });
 
     if (!tokenRes.ok) {
       const errText = await tokenRes.text();
       console.error('[Linux.do Token Error]', errText);
-      throw new Error(`Token Exchange Failed: ${tokenRes.status} ${tokenRes.statusText}`);
+      throw new Error(`Token Exchange Failed: ${tokenRes.status} ${errText}`);
     }
 
     const tokenData = await tokenRes.json();
@@ -90,12 +101,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const supabaseAdmin = createClient(SUPABASE_URL!, serviceKey!);
     const userId = `linuxdo_${linuxUser.id}`;
     
+    // Ensure name is never null
+    const userName = linuxUser.name || linuxUser.username || `User ${linuxUser.id}`;
+    
     const { error: upsertError } = await supabaseAdmin
       .from('users')
       .upsert({
         id: userId,
-        name: linuxUser.name || linuxUser.username || `User ${linuxUser.id}`,
-        email: linuxUser.email, 
+        name: userName,
+        email: linuxUser.email || undefined, 
         avatar: linuxUser.avatar_url,
         provider: 'linuxdo',
         last_flag_at: Date.now() 
@@ -103,13 +117,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (upsertError) {
       console.error('Supabase Upsert Error:', upsertError);
-      throw new Error(`Database Sync Failed: ${upsertError.message}`);
+      // We continue even if DB sync fails, we can still generate the token
     }
 
     // 6. Create Frontend JWT
     const payload = {
       sub: userId,
-      name: linuxUser.name || linuxUser.username || `User ${linuxUser.id}`,
+      name: userName,
       avatar: linuxUser.avatar_url,
       provider: 'linuxdo',
       exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 7) // 7 days
@@ -124,7 +138,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: any) {
     console.error('[Linux.do Callback Crash]', error);
     const errorMsg = error.message || "Unknown Server Error";
-    // Redirect to frontend with error
     res.redirect(`${baseUrl}?error=${encodeURIComponent(errorMsg)}`);
   }
 }

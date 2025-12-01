@@ -3,7 +3,6 @@
   "version": "1.0.1",
   "description": "Gamified Prompt Engineering Learning Platform",
   "source": "index.html",
-  "type": "module",
   "scripts": {
     "start": "parcel",
     "build": "parcel build"
