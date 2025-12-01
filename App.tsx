@@ -1,5 +1,4 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Playground from './components/Playground';
 import AuthPage from './components/AuthPage';
@@ -13,6 +12,7 @@ import { Menu, AlertTriangle, Loader2 } from 'lucide-react';
 function parseJwt (token: string) {
     try {
         var base64Url = token.split('.')[1];
+        if (!base64Url) return null;
         var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
         var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
             return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
@@ -29,6 +29,7 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [lang, setLang] = useState<Language>('en');
   const [view, setView] = useState<'game' | 'leaderboard'>('game');
+  const [showSkip, setShowSkip] = useState(false);
   
   // Mobile sidebar toggle
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -44,75 +45,105 @@ export default function App() {
   useEffect(() => {
     let mounted = true;
 
-    const initAuth = async () => {
-        const params = new URLSearchParams(window.location.search);
-        
-        // A. Check for Error
-        const errorParam = params.get('error');
-        if (errorParam) {
-            setAuthError(decodeURIComponent(errorParam));
-            // Clean URL
-            window.history.replaceState({}, document.title, "/");
-            if (mounted) setIsAuthLoading(false);
-            return;
-        }
-
-        // B. Check for Linux.do Token in URL Query Params (Custom Flow)
-        const token = params.get('token');
-        
-        if (token) {
-            const decoded = parseJwt(token);
-            if (decoded && decoded.sub) {
-                const userData: User = {
-                    id: decoded.sub,
-                    name: decoded.name || 'Linux.do User',
-                    avatar: decoded.avatar,
-                    provider: 'linuxdo',
-                    totalFlags: 0, 
-                    lastFlagAt: Date.now()
-                };
-                // Clear URL to prevent token reuse issues
-                window.history.replaceState({}, document.title, "/");
-                await handleLogin(userData);
-                if (mounted) setIsAuthLoading(false);
-                return;
+    // Safety Timeout: Force app to load if Auth hangs for more than 5 seconds (e.g. slow network)
+    const safetyTimeout = setTimeout(() => {
+        if (mounted) {
+            console.warn("Auth initialization timed out. Forcing load.");
+            setIsAuthLoading(false);
+            if (!user) {
+                // If we forced load and no user, show skip button in case it's just really slow
+                setShowSkip(true);
             }
         }
+    }, 5000); // Reduced to 5s for better UX
 
-        // C. Check Supabase Session (Standard OAuth Flow - Google/Github)
-        if (!supabase) {
-            console.warn("Supabase not initialized. Auth disabled.");
-            if (mounted) setIsAuthLoading(false);
-            return;
-        }
+    const initAuth = async () => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            
+            // A. Check for Error
+            const errorParam = params.get('error');
+            if (errorParam) {
+                setAuthError(decodeURIComponent(errorParam));
+                // Clean URL
+                window.history.replaceState({}, document.title, "/");
+                return; // Finally block will handle loading state
+            }
 
-        // Check initial session
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && session.user) {
-            await handleAuthUser(session.user);
+            // B. Check for Linux.do Token in URL Query Params (Custom Flow)
+            const token = params.get('token');
+            
+            if (token) {
+                const decoded = parseJwt(token);
+                if (decoded && decoded.sub) {
+                    const userData: User = {
+                        id: decoded.sub,
+                        name: decoded.name || 'Linux.do User',
+                        avatar: decoded.avatar,
+                        provider: 'linuxdo',
+                        totalFlags: 0, 
+                        lastFlagAt: Date.now()
+                    };
+                    // Clear URL to prevent token reuse issues
+                    window.history.replaceState({}, document.title, "/");
+                    
+                    // Attempt login, catch sync errors so we don't block entry
+                    await handleLogin(userData).catch(e => console.warn("Sync failed, proceeding offline", e));
+                    return;
+                }
+            }
+
+            // C. Check Supabase Session (Standard OAuth Flow - Google/Github)
+            if (supabase) {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error) {
+                    console.warn("Supabase session error:", error.message);
+                } else if (session && session.user) {
+                    await handleAuthUser(session.user).catch(e => console.warn("User sync failed", e));
+                }
+            } else {
+                console.log("Supabase not configured. Running in offline/demo mode.");
+            }
+        } catch (err) {
+            console.error("Critical Auth Initialization Error:", err);
+            setAuthError("Failed to initialize system. Please refresh.");
+        } finally {
+            if (mounted) {
+                clearTimeout(safetyTimeout);
+                setIsAuthLoading(false);
+            }
         }
-        
-        if (mounted) setIsAuthLoading(false);
     };
 
     initAuth();
 
     // Listen for auth changes (Redirects trigger SIGNED_IN)
-    const { data: { subscription } } = supabase?.auth.onAuthStateChange(async (event, session) => {
-        console.log("Auth Event:", event);
-        if (event === 'SIGNED_IN' && session?.user) {
-            if (!user || user.id !== session.user.id) {
-                setIsAuthLoading(true);
-                await handleAuthUser(session.user);
-                setIsAuthLoading(false);
-            }
-        } else if (event === 'SIGNED_OUT') {
-            setUser(null);
+    // Safely check if supabase exists before attaching listener
+    let subscription: { unsubscribe: () => void } = { unsubscribe: () => {} };
+    
+    if (supabase) {
+        try {
+            const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+                console.log("Auth Event:", event);
+                if (event === 'SIGNED_IN' && session?.user) {
+                    // Only sync if user changed or isn't set
+                    if (!user || user.id !== session.user.id) {
+                        await handleAuthUser(session.user).catch(console.error);
+                    }
+                    if (mounted) setIsAuthLoading(false);
+                } else if (event === 'SIGNED_OUT') {
+                    if (mounted) setUser(null);
+                }
+            });
+            subscription = data.subscription;
+        } catch (e) {
+            console.error("Failed to attach auth listener", e);
         }
-    }) || { data: { subscription: { unsubscribe: () => {} } } };
+    }
 
     return () => {
         mounted = false;
+        clearTimeout(safetyTimeout);
         subscription.unsubscribe();
     };
   }, []);
@@ -141,6 +172,7 @@ export default function App() {
         setAuthError(null); // Clear error on success
     } catch (e) {
         console.error("Sync failed", e);
+        // Fallback to local user data if sync fails
         setUser(userData);
     }
   };
@@ -194,6 +226,15 @@ export default function App() {
         <div className="flex h-[100dvh] w-screen items-center justify-center bg-background text-zinc-500 flex-col gap-4">
             <Loader2 size={32} className="animate-spin text-primary" />
             <p className="text-sm font-mono animate-pulse">Initializing Protocol Omega...</p>
+            <p className="text-xs text-zinc-700">Checking credentials...</p>
+            {showSkip && (
+                <button 
+                    onClick={() => setIsAuthLoading(false)}
+                    className="mt-4 px-4 py-2 text-xs text-zinc-400 hover:text-white border border-zinc-800 rounded bg-zinc-900/50 hover:bg-zinc-800 transition-colors"
+                >
+                    System Unresponsive? Skip Check
+                </button>
+            )}
         </div>
     );
   }
