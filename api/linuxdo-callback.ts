@@ -1,6 +1,6 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import * as jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
 
 // Force Node.js runtime
