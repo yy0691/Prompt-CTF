@@ -132,10 +132,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ lang, initialError }) => {
                          {isLoading === 'linuxdo' ? (
                             <div className="w-5 h-5 border-2 border-zinc-600 border-t-white rounded-full animate-spin"></div>
                         ) : (
-                            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12 0C5.372 0 0 5.373 0 12s5.372 12 12 12 12-5.373 12-12S18.628 0 12 0zm1.7 18.25c-1.3 0-2.35-1.1-2.35-2.45s1.05-2.45 2.35-2.45 2.35 1.1 2.35 2.45-1.05 2.45-2.35 2.45zm5.7-4.25c0 .65-.55 1.2-1.2 1.2h-.95c-.2 0-.35-.15-.35-.35V11.8c0-.95-.75-1.7-1.7-1.7s-1.7.75-1.7 1.7v2.2c0 .65-.55 1.2-1.2 1.2h-.9c-.65 0-1.2-.55-1.2-1.2V11.5c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5v2.5z"/>
-                                <path d="M14.75 9.5c0 1.25-1 2.25-2.25 2.25S10.25 10.75 10.25 9.5 11.25 7.25 12.5 7.25 14.75 8.25 14.75 9.5z" fill="#FFF"/>
-                                <path d="M7 16a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm14 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" fill="#FFC107"/>
+                            <svg className="w-5 h-5" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                                <defs>
+                                    <clipPath id="linuxdo-logo-clip">
+                                        <circle cx="60" cy="60" r="47"/>
+                                    </clipPath>
+                                </defs>
+                                <circle fill="#f0f0f0" cx="60" cy="60" r="50"/>
+                                <rect fill="#1c1c1e" clipPath="url(#linuxdo-logo-clip)" x="10" y="10" width="100" height="30"/>
+                                <rect fill="#f0f0f0" clipPath="url(#linuxdo-logo-clip)" x="10" y="40" width="100" height="40"/>
+                                <rect fill="#ffb003" clipPath="url(#linuxdo-logo-clip)" x="10" y="80" width="100" height="30"/>
                             </svg>
                         )}
                         {t.continueLinuxdo}
