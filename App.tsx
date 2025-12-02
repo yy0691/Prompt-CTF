@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import Playground from './components/Playground';
 import AuthPage from './components/AuthPage';
 import Leaderboard from './components/Leaderboard';
+import SettingsModal from './components/SettingsModal';
 import { getCurriculum } from './data/curriculum';
 import { UserProgress, User, Language } from './types';
 import { syncUser, supabase, logoutUser } from './services/supabaseService';
@@ -45,6 +46,9 @@ export default function App() {
   // Desktop sidebar collapse
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
   
+  // Settings Modal State
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   const [progress, setProgress] = useState<UserProgress>({
     completedLevels: [],
     currentLevelId: 'L1-1'
@@ -265,6 +269,9 @@ export default function App() {
   return (
     <div className="flex h-[100dvh] w-screen bg-background overflow-hidden text-zinc-100 font-sans selection:bg-primary/30">
       
+      {/* Settings Modal (Global) */}
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
@@ -288,6 +295,7 @@ export default function App() {
                 setView('leaderboard');
                 setSidebarOpen(false);
             }}
+            onOpenSettings={() => setIsSettingsOpen(true)}
             isCollapsed={isDesktopCollapsed}
             toggleCollapse={() => setIsDesktopCollapsed(!isDesktopCollapsed)}
         />

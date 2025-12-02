@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Level, Chapter, UserProgress, User, Language } from '../types';
-import { Terminal, CheckCircle, Lock, LogOut, User as UserIcon, Globe, ChevronDown, ChevronRight, BookOpen, FlaskConical, Wrench, Layers, Trophy, PanelLeftClose, PanelLeftOpen, Brain } from 'lucide-react';
+import { Terminal, CheckCircle, Lock, LogOut, User as UserIcon, Globe, ChevronDown, ChevronRight, BookOpen, FlaskConical, Wrench, Layers, Trophy, PanelLeftClose, PanelLeftOpen, Brain, Settings2 } from 'lucide-react';
 import { getTranslation } from '../lib/translations';
 
 interface SidebarProps {
@@ -14,6 +14,7 @@ interface SidebarProps {
   onSetLang: (lang: Language) => void;
   onLogout: () => void;
   onShowLeaderboard: () => void;
+  onOpenSettings: () => void;
   isCollapsed: boolean;
   toggleCollapse: () => void;
 }
@@ -28,6 +29,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     onSetLang, 
     onLogout, 
     onShowLeaderboard,
+    onOpenSettings,
     isCollapsed,
     toggleCollapse
 }) => {
@@ -206,6 +208,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
                 <Globe size={isCollapsed ? 18 : 14} />
                 {!isCollapsed && <span>{lang === 'en' ? 'English' : '中文'}</span>}
+            </button>
+
+            <button
+                onClick={onOpenSettings}
+                className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white transition-colors"
+                title={t.settings}
+            >
+                <Settings2 size={isCollapsed ? 18 : 14} />
+                {!isCollapsed && <span>{t.settings}</span>}
             </button>
 
             <button 
